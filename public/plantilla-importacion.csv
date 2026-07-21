@@ -1,0 +1,4 @@
+registro_id;tipo;nombres;apellidos;nombre_mostrar;razon_social;tipo_documento;numero_documento;nit;digito_verificacion;telefono;celular;correo;direccion;ciudad;departamento;pais;sitio_web;categorias;notas;plataforma;usuario_plataforma;contrasena_plataforma;url_plataforma;notas_credencial
+persona-001;persona;Juan Pablo;Ramírez Gómez;Juan Pablo Ramírez Gómez;;CC;1234567890;;;;3105556677;juan@example.com;Calle 100 # 15-45;Bogotá;Cundinamarca;Colombia;;Cliente | Familia;Contacto principal;Google Workspace;juan@example.com;CAMBIAR-ESTA-CONTRASEÑA;https://accounts.google.com;Correo corporativo
+empresa-001;empresa;;;Soluciones Integrales S.A.S.;Soluciones Integrales S.A.S.;;;900123456;7;(601) 555 1234;;contacto@solint.com;Carrera 7 # 80-10;Bogotá;Cundinamarca;Colombia;https://solint.com;Empresa | Cliente;Cliente de contabilidad;;;;;
+
