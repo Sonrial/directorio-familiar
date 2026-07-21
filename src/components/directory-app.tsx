@@ -49,7 +49,7 @@ export function DirectoryApp({ initialUser }: { initialUser: AppUser }) {
   const [loading, setLoading] = useState(true);
   const [mobileNav, setMobileNav] = useState(false);
   const [contactModal, setContactModal] = useState<Contact | "new" | null>(null);
-  const [credentialContact, setCredentialContact] = useState<Contact | null>(null);
+  const [credentialModal, setCredentialModal] = useState<{ contact: Contact; credential?: Credential } | null>(null);
   const [passwordModal, setPasswordModal] = useState(initialUser.must_change_password);
   const [backupModal, setBackupModal] = useState(false);
   const [toast, setToast] = useState("");
@@ -163,7 +163,8 @@ export function DirectoryApp({ initialUser }: { initialUser: AppUser }) {
               contacts={contacts} selected={selected} loading={loading} status={status}
               title={section === "companies" ? "Empresas" : "Contactos"}
               onStatus={setStatus} onSelect={setSelectedId} onNew={() => setContactModal("new")}
-              onEdit={(contact) => setContactModal(contact)} onCredential={setCredentialContact}
+              onEdit={(contact) => setContactModal(contact)} onCredential={(contact) => setCredentialModal({ contact })}
+              onEditCredential={(contact, credential) => setCredentialModal({ contact, credential })}
               onArchive={async (contact) => {
                 if (!window.confirm(`¿Archivar a ${contact.display_name}? Podrás verlo usando el filtro de inactivos.`)) return;
                 await jsonRequest(`/api/contacts/${contact.id}`, { method: "DELETE" });
@@ -172,7 +173,7 @@ export function DirectoryApp({ initialUser }: { initialUser: AppUser }) {
               notify={notify}
             />
           )}
-          {section === "credentials" && <CredentialsView items={credentials} notify={notify} onOpen={(id) => { setSelectedId(id); setSection("contacts"); }} />}
+          {section === "credentials" && <CredentialsView items={credentials} notify={notify} onOpen={(id) => { setSelectedId(id); setSection("contacts"); }} onEdit={(contact, credential) => setCredentialModal({ contact, credential })} />}
           {section === "addresses" && <AddressesView contacts={contacts} onOpen={(id) => { setSelectedId(id); setSection("contacts"); }} />}
           {section === "notes" && <NotesView contacts={contacts} onOpen={(id) => { setSelectedId(id); setSection("contacts"); }} />}
           {section === "import" && <ImportView onImported={() => refresh("Importación terminada")} notify={notify} />}
@@ -181,7 +182,7 @@ export function DirectoryApp({ initialUser }: { initialUser: AppUser }) {
       </div>
 
       {contactModal && <ContactModal contact={contactModal === "new" ? null : contactModal} categories={meta.categories} onClose={() => setContactModal(null)} onSaved={async () => { setContactModal(null); await refresh("Contacto guardado"); }} />}
-      {credentialContact && <CredentialModal contact={credentialContact} onClose={() => setCredentialContact(null)} onSaved={async () => { setCredentialContact(null); await refresh("Credencial cifrada y guardada"); }} />}
+      {credentialModal && <CredentialModal contact={credentialModal.contact} credential={credentialModal.credential} onClose={() => setCredentialModal(null)} onSaved={async () => { const message = credentialModal.credential ? "Credencial actualizada" : "Credencial cifrada y guardada"; setCredentialModal(null); await refresh(message); }} />}
       {passwordModal && <PasswordModal required={initialUser.must_change_password} onClose={() => !initialUser.must_change_password && setPasswordModal(false)} onSaved={() => { setPasswordModal(false); notify("Contraseña actualizada"); }} />}
       {backupModal && <BackupModal onClose={() => setBackupModal(false)} notify={notify} />}
       {toast && <div className="toast"><CheckCircle2 size={18} />{toast}</div>}
@@ -220,6 +221,7 @@ function ContactsView(props: {
   contacts: Contact[]; selected: Contact | null; loading: boolean; status: string; title: string;
   onStatus: (value: string) => void; onSelect: (id: string) => void; onNew: () => void;
   onEdit: (contact: Contact) => void; onCredential: (contact: Contact) => void;
+  onEditCredential: (contact: Contact, credential: Credential) => void;
   onArchive: (contact: Contact) => void; notify: (message: string) => void;
 }) {
   const [cards, setCards] = useState(false);
@@ -231,7 +233,7 @@ function ContactsView(props: {
         <div className="list-summary">Mostrando <strong>{props.contacts.length}</strong> registros</div>
         {props.loading ? <div className="loading-lines">{Array.from({ length: 6 }, (_, index) => <i key={index} />)}</div> : props.contacts.length === 0 ? <Empty icon={<Users />} text="No hay registros que coincidan con la búsqueda" /> : cards ? <div className="contact-cards">{props.contacts.map((contact) => <ContactCard key={contact.id} contact={contact} active={contact.id === props.selected?.id} onClick={() => props.onSelect(contact.id)} />)}</div> : <ContactTable contacts={props.contacts} selected={props.selected?.id ?? null} onSelect={props.onSelect} />}
       </div>
-      {props.selected && <DetailPanel contact={props.selected} onClose={() => props.onSelect("")} onEdit={() => props.onEdit(props.selected!)} onCredential={() => props.onCredential(props.selected!)} onArchive={() => props.onArchive(props.selected!)} notify={props.notify} />}
+      {props.selected && <DetailPanel contact={props.selected} onClose={() => props.onSelect("")} onEdit={() => props.onEdit(props.selected!)} onCredential={() => props.onCredential(props.selected!)} onEditCredential={(credential) => props.onEditCredential(props.selected!, credential)} onArchive={() => props.onArchive(props.selected!)} notify={props.notify} />}
     </div>
   </section>;
 }
@@ -244,7 +246,7 @@ function ContactCard({ contact, active, onClick }: { contact: Contact; active: b
   return <button className={`contact-card ${active ? "selected" : ""}`} onClick={onClick}><span className="avatar large">{initials(contact.display_name)}</span><strong>{contact.display_name}</strong><small>{contact.legal_name || (contact.kind === "company" ? "Empresa" : "Persona")}</small><span>{firstMethod(contact, "mobile") || firstMethod(contact, "email") || "Sin teléfono ni correo"}</span><span className={`status-badge ${contact.status}`}>{contact.status === "active" ? "Activo" : "Inactivo"}</span></button>;
 }
 
-function DetailPanel({ contact, onClose, onEdit, onCredential, onArchive, notify }: { contact: Contact; onClose: () => void; onEdit: () => void; onCredential: () => void; onArchive: () => void; notify: (message: string) => void }) {
+function DetailPanel({ contact, onClose, onEdit, onCredential, onEditCredential, onArchive, notify }: { contact: Contact; onClose: () => void; onEdit: () => void; onCredential: () => void; onEditCredential: (credential: Credential) => void; onArchive: () => void; notify: (message: string) => void }) {
   const [tab, setTab] = useState<"info" | "credentials" | "notes">("info");
   return <aside className="detail-panel">
     <div className="detail-header"><div className="detail-title"><span className="avatar large">{initials(contact.display_name)}</span><span><strong>{contact.display_name}</strong><small>{contact.legal_name || (contact.kind === "company" ? "Empresa" : "Persona")}</small></span><span className={`status-badge ${contact.status}`}>{contact.status === "active" ? "Activo" : "Inactivo"}</span></div><button className="icon-button" onClick={onClose} aria-label="Cerrar detalle"><X size={20} /></button></div>
@@ -254,7 +256,7 @@ function DetailPanel({ contact, onClose, onEdit, onCredential, onArchive, notify
         <div className="detail-section"><div className="section-heading"><h3>Información general</h3><button className="small-button" onClick={onEdit}><Pencil size={15} /> Editar</button></div><div className="info-grid"><Info icon={<UserRound />} label="Nombre" value={contact.display_name} /><Info icon={<Building2 />} label="Razón social" value={contact.legal_name} /><Info icon={<ShieldCheck />} label={contact.tax_id ? "NIT" : contact.document_type || "Documento"} value={contact.tax_id || contact.document_number} /><Info icon={<Globe />} label="Sitio web" value={contact.website} link /><Info icon={<Phone />} label="Teléfono" value={firstMethod(contact, "phone")} /><Info icon={<Smartphone />} label="Celular" value={firstMethod(contact, "mobile")} /><Info icon={<Mail />} label="Correo electrónico" value={firstMethod(contact, "email")} /><Info icon={<MapPin />} label="Dirección" value={contact.addresses[0] ? [contact.addresses[0].line1, contact.addresses[0].city, contact.addresses[0].region, contact.addresses[0].country].filter(Boolean).join(", ") : ""} /></div></div>
         <div className="detail-section"><div className="section-heading"><h3>Categorías</h3></div><div className="category-list">{contact.categories.length ? contact.categories.map((category) => <span key={category.id} style={{ "--cat": category.color } as React.CSSProperties}>{category.name}</span>) : <small>Sin categorías</small>}</div></div>
       </>}
-      {tab === "credentials" && <div className="detail-section"><div className="section-heading"><h3>Cuentas y credenciales</h3><button className="small-button" onClick={onCredential}><Plus size={15} /> Agregar</button></div>{contact.credentials.length ? <div className="credential-list">{contact.credentials.map((credential) => <CredentialRow key={credential.id} credential={credential} notify={notify} />)}</div> : <Empty icon={<KeyRound />} text="No hay credenciales guardadas" />}</div>}
+      {tab === "credentials" && <div className="detail-section"><div className="section-heading"><h3>Cuentas y credenciales</h3><button className="small-button" onClick={onCredential}><Plus size={15} /> Agregar</button></div>{contact.credentials.length ? <div className="credential-list">{contact.credentials.map((credential) => <CredentialRow key={credential.id} credential={credential} notify={notify} onEdit={() => onEditCredential(credential)} />)}</div> : <Empty icon={<KeyRound />} text="No hay credenciales guardadas" />}</div>}
       {tab === "notes" && <div className="detail-section"><div className="section-heading"><h3>Notas</h3></div>{contact.notes.length ? <div className="notes-list">{contact.notes.map((note) => <article key={note.id}><p>{note.body}</p><small>{new Date(note.created_at).toLocaleDateString("es-CO")}</small></article>)}</div> : <Empty icon={<StickyNote />} text="No hay notas para este contacto" />}</div>}
     </div>
     <div className="detail-footer"><button className="danger-link" onClick={onArchive}><Trash2 size={16} /> Archivar contacto</button></div>
@@ -265,7 +267,7 @@ function Info({ icon, label, value, link }: { icon: ReactNode; label: string; va
   return <div className="info-item"><span>{icon}</span><div><small>{label}</small>{value ? link ? <a href={value.startsWith("http") ? value : `https://${value}`} target="_blank" rel="noreferrer">{value}</a> : <strong>{value}</strong> : <em>Sin registrar</em>}</div></div>;
 }
 
-function CredentialRow({ credential, notify }: { credential: Credential; notify: (message: string) => void }) {
+function CredentialRow({ credential, notify, onEdit }: { credential: Credential; notify: (message: string) => void; onEdit: () => void }) {
   const [secret, setSecret] = useState("");
   const [loading, setLoading] = useState(false);
   async function reveal() {
@@ -285,11 +287,11 @@ function CredentialRow({ credential, notify }: { credential: Credential; notify:
     notify("Contraseña copiada; el portapapeles se limpiará en 30 segundos si la pestaña sigue abierta");
     window.setTimeout(async () => { try { if (await navigator.clipboard.readText() === value) await navigator.clipboard.writeText(""); } catch { /* El navegador puede bloquear la lectura. */ } }, 30000);
   }
-  return <div className="credential-row"><span className="platform-icon"><KeyRound size={17} /></span><span><strong>{credential.platform}</strong><small>{credential.username || "Sin usuario"}</small></span><code>{secret || "••••••••••••"}</code><button onClick={reveal} aria-label="Revelar contraseña" disabled={loading}>{secret ? <EyeOff size={17} /> : <Eye size={17} />}</button><button onClick={copy} aria-label="Copiar contraseña"><ClipboardCopy size={17} /></button></div>;
+  return <div className="credential-row"><span className="platform-icon"><KeyRound size={17} /></span><span><strong>{credential.platform}</strong><small>{credential.username || "Sin usuario"}</small></span><code>{secret || "••••••••••••"}</code><button onClick={reveal} aria-label="Revelar contraseña" disabled={loading}>{secret ? <EyeOff size={17} /> : <Eye size={17} />}</button><button onClick={copy} aria-label="Copiar contraseña"><ClipboardCopy size={17} /></button><button onClick={onEdit} aria-label={`Editar credencial de ${credential.platform}`}><Pencil size={17} /></button></div>;
 }
 
-function CredentialsView({ items, notify, onOpen }: { items: (Credential & { contact: Contact })[]; notify: (message: string) => void; onOpen: (id: string) => void }) {
-  return <section><PageHeading icon={<KeyRound />} title="Credenciales" copy="Accesos cifrados asociados a personas y empresas." /><div className="panel standalone-panel">{items.length ? <div className="credential-table"><div className="credential-table-head"><span>Plataforma</span><span>Propietario</span><span>Usuario</span><span>Contraseña</span><span /></div>{items.map((item) => <div className="credential-table-row" key={item.id}><strong>{item.platform}</strong><button onClick={() => onOpen(item.contact.id)}>{item.contact.display_name}</button><span>{item.username || "—"}</span><CredentialRow credential={item} notify={notify} /></div>)}</div> : <Empty icon={<KeyRound />} text="Todavía no hay credenciales guardadas" />}</div></section>;
+function CredentialsView({ items, notify, onOpen, onEdit }: { items: (Credential & { contact: Contact })[]; notify: (message: string) => void; onOpen: (id: string) => void; onEdit: (contact: Contact, credential: Credential) => void }) {
+  return <section><PageHeading icon={<KeyRound />} title="Credenciales" copy="Accesos cifrados asociados a personas y empresas." /><div className="panel standalone-panel">{items.length ? <div className="credential-table"><div className="credential-table-head"><span>Plataforma</span><span>Propietario</span><span>Usuario</span><span>Contraseña</span><span>Acciones</span></div>{items.map((item) => <div className="credential-table-row" key={item.id}><strong>{item.platform}</strong><button onClick={() => onOpen(item.contact.id)}>{item.contact.display_name}</button><span>{item.username || "—"}</span><CredentialRow credential={item} notify={notify} onEdit={() => onEdit(item.contact, item)} /></div>)}</div> : <Empty icon={<KeyRound />} text="Todavía no hay credenciales guardadas" />}</div></section>;
 }
 
 function AddressesView({ contacts, onOpen }: { contacts: Contact[]; onOpen: (id: string) => void }) {
@@ -356,10 +358,10 @@ function ContactModal({ contact, categories, onClose, onSaved }: { contact: Cont
     {!contact && <label>Nota inicial<textarea name="note" rows={3} placeholder="Información adicional útil…" /></label>}{error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={saving}>{saving ? "Guardando…" : "Guardar contacto"}</button></div></form></Modal>;
 }
 
-function CredentialModal({ contact, onClose, onSaved }: { contact: Contact; onClose: () => void; onSaved: () => void }) {
+function CredentialModal({ contact, credential, onClose, onSaved }: { contact: Contact; credential?: Credential; onClose: () => void; onSaved: () => void }) {
   const [show, setShow] = useState(false); const [error, setError] = useState(""); const [saving, setSaving] = useState(false);
-  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setSaving(true); const form = new FormData(event.currentTarget); try { await jsonRequest("/api/credentials", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ contact_id: contact.id, platform: form.get("platform"), username: form.get("username"), secret: form.get("secret"), url: form.get("url"), notes: form.get("notes") }) }); onSaved(); } catch (err) { setError(err instanceof Error ? err.message : "No fue posible guardar"); setSaving(false); } }
-  return <Modal title={`Nueva credencial · ${contact.display_name}`} onClose={onClose}><form className="form-stack" onSubmit={submit}><label>Plataforma *<input name="platform" required placeholder="Ej. DIAN, Google, banco…" /></label><label>Usuario<input name="username" autoComplete="off" /></label><label>Contraseña *<span className="password-field"><input name="secret" required type={show ? "text" : "password"} autoComplete="new-password" /><button type="button" onClick={() => setShow(!show)}>{show ? <EyeOff size={17} /> : <Eye size={17} />}</button></span></label><label>Dirección web<input name="url" type="url" placeholder="https://" /></label><label>Notas<textarea name="notes" rows={3} /></label><div className="encryption-callout"><ShieldCheck size={18} /> Se cifrará antes de guardarse.</div>{error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={saving}>{saving ? "Cifrando…" : "Guardar credencial"}</button></div></form></Modal>;
+  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setSaving(true); setError(""); const form = new FormData(event.currentTarget); const secret = String(form.get("secret") || ""); try { await jsonRequest(credential ? `/api/credentials/${credential.id}` : "/api/credentials", { method: credential ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...(!credential && { contact_id: contact.id }), platform: form.get("platform"), username: form.get("username"), ...(secret && { secret }), url: form.get("url"), notes: form.get("notes") }) }); onSaved(); } catch (err) { setError(err instanceof Error ? err.message : "No fue posible guardar"); setSaving(false); } }
+  return <Modal title={`${credential ? "Editar" : "Nueva"} credencial · ${contact.display_name}`} onClose={onClose}><form className="form-stack" onSubmit={submit}><label>Plataforma *<input name="platform" required defaultValue={credential?.platform || ""} placeholder="Ej. DIAN, Google, banco…" /></label><label>Usuario<input name="username" autoComplete="off" defaultValue={credential?.username || ""} /></label><label>{credential ? "Nueva contraseña" : "Contraseña *"}<span className="password-field"><input name="secret" required={!credential} type={show ? "text" : "password"} autoComplete="new-password" placeholder={credential ? "Déjala vacía para conservar la actual" : ""} /><button type="button" onClick={() => setShow(!show)} aria-label={show ? "Ocultar contraseña" : "Mostrar contraseña"}>{show ? <EyeOff size={17} /> : <Eye size={17} />}</button></span></label><label>Dirección web<input name="url" type="url" defaultValue={credential?.url || ""} placeholder="https://" /></label><label>Notas<textarea name="notes" rows={3} defaultValue={credential?.notes || ""} /></label><div className="encryption-callout"><ShieldCheck size={18} /> {credential ? "Si escribes una nueva contraseña, se cifrará y reemplazará la anterior." : "Se cifrará antes de guardarse."}</div>{error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={saving}>{saving ? "Cifrando…" : credential ? "Guardar cambios" : "Guardar credencial"}</button></div></form></Modal>;
 }
 
 function PasswordModal({ required, onClose, onSaved }: { required: boolean; onClose: () => void; onSaved: () => void }) {
@@ -380,4 +382,4 @@ function Modal({ title, onClose, children, wide, locked }: { title: string; onCl
 
 function FormSection({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) { return <fieldset className="form-section"><legend><span>{title}</span>{action}</legend>{children}</fieldset>; }
 function Empty({ icon, text }: { icon: ReactNode; text: string }) { return <div className="empty-state"><span>{icon}</span><p>{text}</p></div>; }
-function auditLabel(action: string) { return ({ "credential.reveal": "Credencial revelada", "credential.create": "Credencial creada", "credential.delete": "Credencial eliminada", "contact.create": "Contacto creado", "contact.update": "Contacto actualizado", "contact.archive": "Contacto archivado", "import.csv": "Archivo importado", "export.csv": "CSV exportado", "export.encrypted_backup": "Respaldo cifrado", "password.change": "Contraseña actualizada" } as Record<string, string>)[action] || action; }
+function auditLabel(action: string) { return ({ "credential.reveal": "Credencial revelada", "credential.create": "Credencial creada", "credential.update": "Credencial actualizada", "credential.delete": "Credencial eliminada", "contact.create": "Contacto creado", "contact.update": "Contacto actualizado", "contact.archive": "Contacto archivado", "import.csv": "Archivo importado", "export.csv": "CSV exportado", "export.encrypted_backup": "Respaldo cifrado", "password.change": "Contraseña actualizada" } as Record<string, string>)[action] || action; }

@@ -70,3 +70,8 @@ export const credentialSchema = z.object({
   notes: z.string().trim().max(2000).optional().nullable(),
 });
 
+export const credentialUpdateSchema = credentialSchema
+  .omit({ contact_id: true, secret: true })
+  .extend({ secret: z.string().max(5000).optional() })
+  .strict();
+
